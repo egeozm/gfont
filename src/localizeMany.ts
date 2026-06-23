@@ -18,7 +18,7 @@ function buildLocalizeOptions(
 }
 
 export async function localizeFromWebsite(options: LocalizeManyOptions): Promise<LocalizeManyResult> {
-  const discovery = await discoverGoogleFontsFromWebsite(options.websiteUrl);
+  const discovery = await discoverGoogleFontsFromWebsite(options.websiteUrl, options.crawl);
 
   if (discovery.fontLinks.length === 0) {
     return {

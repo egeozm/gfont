@@ -1,6 +1,7 @@
 import { fetchTextWithTimeout } from "./fetchUtils.js";
 
-const METADATA_URL = "https://fonts.google.com/metadata/fonts";
+export const GOOGLE_FONTS_METADATA_URL = "https://fonts.google.com/metadata/fonts";
+const METADATA_URL = GOOGLE_FONTS_METADATA_URL;
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24;
 
 interface GoogleFontMetadataEntry {
@@ -54,4 +55,9 @@ export async function lookupGoogleFontsLicense(family: string): Promise<string |
   const map = await getGoogleFontsLicenseMap();
   if (!map) return null;
   return map.get(normalizeFamilyName(family)) ?? null;
+}
+
+export function buildGoogleFontsSpecimenUrl(family: string): string {
+  const slug = family.trim().replace(/\s+/g, "+");
+  return `https://fonts.google.com/specimen/${encodeURIComponent(slug).replace(/%2B/g, "+")}`;
 }

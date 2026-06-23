@@ -5,7 +5,7 @@ CLI tool and local web app that automates self-hosting Google Fonts. Paste a Goo
 ## What it does
 
 1. Accepts either a direct Google Fonts CSS URL or a website page URL
-2. For websites, scans HTML and linked CSS for real `fonts.googleapis.com/css` links
+2. For websites, crawls same-origin pages by default (BFS, up to 50 pages) and scans HTML plus linked CSS for real `fonts.googleapis.com/css` links
 3. Ignores unrelated direct `fonts.gstatic.com` binaries (maps, widgets, preloads)
 4. Lets you choose families, weights, styles, subsets, and formats in a local web UI
 5. Downloads selected font files and packages `fonts.css`, `test.html`, and font binaries into a ZIP
@@ -88,6 +88,9 @@ Each font CSS URL gets its own folder based on the font name(s) in the link.
 | `--prefix <str>` | URL prefix for generated `src` paths | `./` |
 | `--font-display <val>` | Override `font-display` in generated CSS | from Google CSS |
 | `--discovery <mode>` | Website discovery mode | `static` |
+| `--no-crawl` | Scan only the given page (disable same-origin crawl) | crawl on |
+| `--max-pages <n>` | Maximum same-origin pages to crawl | `50` |
+| `--max-depth <n>` | Maximum link depth from seed page | `10` |
 | `--list-font-links` | Print discovered Google Fonts CSS links without downloading | off |
 | `--from-website` | Force website discovery mode | auto-detect |
 
@@ -112,8 +115,11 @@ npm run web
 # Direct font URL
 node dist/index.js "https://fonts.googleapis.com/css?family=Roboto|Varela+Round"
 
-# Website page scan
+# Website page scan (crawls same-origin pages by default)
 node dist/index.js "https://example.com"
+
+# Single page only
+node dist/index.js "https://example.com" --no-crawl
 
 # Preview discovered links only
 node dist/index.js "https://example.com" --list-font-links
@@ -161,8 +167,9 @@ This tool provides informational license hints only. It is **not legal advice**.
 ## Limitations
 
 - Static discovery only scans HTML and linked CSS. Fonts injected purely by JavaScript may not be found yet.
-- Single page only in v1 (no site crawl).
+- Site crawl follows same-origin `<a href>` links only (default on, up to 50 pages / depth 10). Use `--no-crawl` or disable **Scan entire site** in the web UI for a single-page scan.
 - Non-Google self-hosted fonts (for example SpaceX `D-DIN`) are out of scope.
+- License labels include source references where available; they are informational hints only, not legal advice.
 
 ## License
 

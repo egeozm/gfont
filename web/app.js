@@ -31,6 +31,9 @@ const llmModelInput = document.getElementById("llm-model");
 const llmSettingsStatus = document.getElementById("llm-settings-status");
 const llmSaveBtn = document.getElementById("llm-save-btn");
 const llmClearBtn = document.getElementById("llm-clear-btn");
+const crawlEnabledInput = document.getElementById("crawl-enabled");
+const crawlMaxPagesInput = document.getElementById("crawl-max-pages");
+const crawlMaxDepthInput = document.getElementById("crawl-max-depth");
 
 // Block native form navigation if later script setup fails.
 analyzeForm?.addEventListener("submit", (event) => {
@@ -298,6 +301,53 @@ function renderConfidenceBadge(license) {
   return `<span class="confidence-badge ${escapeHtml(license.confidence)}">${escapeHtml(license.confidence)} confidence</span>`;
 }
 
+function renderLabelReferences(references, forLabel) {
+  if (!references?.length) return "";
+
+  const filtered = references.filter((ref) => !forLabel || ref.forLabel === forLabel);
+  if (filtered.length === 0) return "";
+
+  const items = filtered
+    .map((ref) => {
+      const detail = ref.detail ? `<span class="reference-detail">${escapeHtml(ref.detail)}</span>` : "";
+      if (ref.href) {
+        return `<li><a href="${escapeHtml(ref.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(ref.title)}</a>${detail}</li>`;
+      }
+      return `<li><span class="reference-title">${escapeHtml(ref.title)}</span>${detail}</li>`;
+    })
+    .join("");
+
+  return `<ul class="label-references">${items}</ul>`;
+}
+
+function renderLicenseReferences(license) {
+  if (!license?.references?.length) {
+    return renderLicenseEvidence(license);
+  }
+
+  const statusRefs = renderLabelReferences(license.references, "status");
+  const confidenceRefs = renderLabelReferences(license.references, "confidence");
+  const commercialRefs = renderLabelReferences(license.references, "commercialUse");
+
+  const parts = [];
+  if (statusRefs) {
+    parts.push(`<div class="reference-group"><span class="reference-label">Status basis</span>${statusRefs}</div>`);
+  }
+  if (confidenceRefs) {
+    parts.push(`<div class="reference-group"><span class="reference-label">Confidence basis</span>${confidenceRefs}</div>`);
+  }
+  if (commercialRefs) {
+    parts.push(`<div class="reference-group"><span class="reference-label">Commercial use basis</span>${commercialRefs}</div>`);
+  }
+
+  const evidenceBlock = renderLicenseEvidence(license);
+  if (evidenceBlock) {
+    parts.push(evidenceBlock);
+  }
+
+  return parts.join("");
+}
+
 function renderLicenseEvidence(license) {
   if (!license?.evidence?.length) return "";
 
@@ -398,7 +448,7 @@ function renderLicenseMeta(license) {
     parts.push(`<p>${escapeHtml(license.notes)}</p>`);
   }
 
-  parts.push(renderLicenseEvidence(license));
+  parts.push(renderLicenseReferences(license));
   return parts.join("");
 }
 
@@ -489,18 +539,75 @@ function estimateFileCount() {
   return unique.size;
 }
 
+function formatPageReferenceList(urls, seedUrl) {
+  if (!urls?.length) return "";
+
+  const displayUrls = urls.map((url) => {
+    try {
+      const parsed = new URL(url);
+      const seed = seedUrl ? new URL(seedUrl) : null;
+      if (seed && parsed.origin === seed.origin) {
+        return `${parsed.pathname}${parsed.search}` || "/";
+      }
+    } catch {
+      // keep full URL
+    }
+    return url;
+  });
+
+  if (displayUrls.length <= 3) {
+    return displayUrls.map((path) => `<code>${escapeHtml(path)}</code>`).join(", ");
+  }
+
+  return `<details class="page-ref-details"><summary>${displayUrls.length} pages</summary><ul class="discovery-list">${displayUrls
+    .map((path, index) => `<li><a href="${escapeHtml(urls[index])}" target="_blank" rel="noopener noreferrer">${escapeHtml(path)}</a></li>`)
+    .join("")}</ul></details>`;
+}
+
 function renderDiscovery(result) {
   const parts = [];
 
   if (result.inputType === "website") {
-    parts.push(`<p class="muted">Scanned <strong>${result.inputUrl}</strong></p>`);
+    if (result.crawlMeta?.enabled) {
+      const limitNote = result.crawlMeta.limitReached
+        ? ` · stopped at ${result.crawlMeta.limitReached} limit`
+        : "";
+      parts.push(
+        `<p class="muted">Crawled <strong>${result.crawlMeta.pagesScanned}</strong> same-origin page(s) from <strong>${escapeHtml(result.crawlMeta.seedUrl)}</strong>${escapeHtml(limitNote)}</p>`
+      );
+      if (result.crawlMeta.scannedPageUrls?.length) {
+        parts.push(
+          `<details class="crawl-details"><summary>Scanned pages (${result.crawlMeta.scannedPageUrls.length})</summary><ul class="discovery-list">${result.crawlMeta.scannedPageUrls
+            .map((url) => `<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a></li>`)
+            .join("")}</ul></details>`
+        );
+      }
+      if (result.crawlMeta.failedPageUrls?.length) {
+        parts.push(
+          `<details class="crawl-details warning"><summary>${result.crawlMeta.failedPageUrls.length} failed page(s)</summary><ul class="discovery-list">${result.crawlMeta.failedPageUrls
+            .map((item) => `<li><a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item.url)}</a> — ${escapeHtml(item.error)}</li>`)
+            .join("")}</ul></details>`
+        );
+      }
+    } else {
+      parts.push(`<p class="muted">Scanned single page <strong>${escapeHtml(result.inputUrl)}</strong></p>`);
+    }
   }
 
-  if (result.discoveredFontCssUrls.length > 0) {
+  const fontLinks = result.discoveredFontLinks ?? result.discoveredFontCssUrls?.map((url) => ({
+    url,
+    sourcePageUrls: [result.inputUrl],
+  })) ?? [];
+
+  if (fontLinks.length > 0) {
     parts.push(
-      `<p><strong>${result.discoveredFontCssUrls.length}</strong> Google Fonts stylesheet(s) found:</p>`,
-      `<ul class="discovery-list">${result.discoveredFontCssUrls
-        .map((url) => `<li>${url}</li>`)
+      `<p><strong>${fontLinks.length}</strong> Google Fonts stylesheet(s) found:</p>`,
+      `<ul class="discovery-list">${fontLinks
+        .map((link) => {
+          const pages = formatPageReferenceList(link.sourcePageUrls ?? [link.sourcePageUrl], result.inputUrl);
+          const pageNote = pages ? `<span class="muted discovery-source">Found on: ${pages}</span>` : "";
+          return `<li><a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.url)}</a>${pageNote}</li>`;
+        })
         .join("")}</ul>`
     );
   } else {
@@ -511,7 +618,7 @@ function renderDiscovery(result) {
 
   if (result.inputType === "website" && result.pageLang && result.recommendedSubsets?.length) {
     parts.push(
-      `<div class="info">Page language is <strong>${escapeHtml(result.pageLang)}</strong>. Showing recommended subsets (${escapeHtml(formatSubsetList(result.recommendedSubsets))}) by default. Extra subsets like greek or cyrillic come from Google Fonts returning all scripts when the stylesheet URL has no subset filter — not from the map or other page widgets.</div>`
+      `<div class="info">Page language is <strong>${escapeHtml(result.pageLang)}</strong> (from seed page HTML lang/meta). Showing recommended subsets (${escapeHtml(formatSubsetList(result.recommendedSubsets))}) by default — mapped via gfont locale rules.</div>`
     );
   }
 
@@ -737,6 +844,22 @@ function buildInstallContext() {
   };
 }
 
+function getCrawlOptionsForRequest() {
+  const enabled = crawlEnabledInput?.checked !== false;
+  const maxPages = Number.parseInt(crawlMaxPagesInput?.value ?? "50", 10);
+  const maxDepth = Number.parseInt(crawlMaxDepthInput?.value ?? "10", 10);
+
+  if (!enabled) {
+    return { crawl: false, maxPages: 1 };
+  }
+
+  return {
+    crawl: true,
+    maxPages: Number.isFinite(maxPages) && maxPages > 0 ? maxPages : 50,
+    maxDepth: Number.isFinite(maxDepth) && maxDepth >= 0 ? maxDepth : 10,
+  };
+}
+
 function buildReportPayload() {
   if (!analysisState) return null;
   return {
@@ -747,6 +870,7 @@ function buildReportPayload() {
     scannedStylesheets: analysisState.scannedStylesheets,
     pageLang: analysisState.pageLang,
     recommendedSubsets: analysisState.recommendedSubsets,
+    crawlMeta: analysisState.crawlMeta,
     variants: analysisState.variants,
     selectedVariantIds: [...selectedIds],
     familyLicenses: analysisState.familyLicenses ?? [],
@@ -870,7 +994,8 @@ analyzeForm?.addEventListener("submit", async (event) => {
     return;
   }
 
-  setStatus("Analyzing...", "");
+  const crawlEnabled = crawlEnabledInput?.checked !== false;
+  setStatus(crawlEnabled ? "Scanning site and analyzing fonts..." : "Analyzing...", "");
 
   try {
     const response = await fetch("/api/analyze", {
@@ -880,6 +1005,7 @@ analyzeForm?.addEventListener("submit", async (event) => {
         url: inputUrl.value.trim(),
         formats,
         subsets: parseSubsets(inputSubsets.value),
+        crawl: getCrawlOptionsForRequest(),
         ...getLlmSettingsForRequest(),
       }),
     });

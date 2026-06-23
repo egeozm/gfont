@@ -170,7 +170,7 @@ export async function analyzeInput(options: AnalyzeInputOptions): Promise<Analyz
     };
   }
 
-  const discovery = await discoverGoogleFontsFromWebsite(inputUrl);
+  const discovery = await discoverGoogleFontsFromWebsite(inputUrl, options.crawl);
   const allVariants: SelectableFontVariant[] = [];
 
   for (const link of discovery.fontLinks) {
@@ -193,10 +193,12 @@ export async function analyzeInput(options: AnalyzeInputOptions): Promise<Analyz
     inputUrl: discovery.pageUrl,
     inputType: "website",
     discoveredFontCssUrls: discovery.fontLinks.map((link) => link.url),
+    discoveredFontLinks: discovery.fontLinks,
     ignoredDirectFontAssetCount: discovery.ignoredDirectFontAssetCount,
     scannedStylesheets: discovery.scannedStylesheets,
     pageLang: discovery.pageLang,
     recommendedSubsets: discovery.recommendedSubsets,
+    crawlMeta: discovery.crawlMeta,
     variants: deduped,
     families: [...new Set(deduped.map((variant) => variant.family))],
     familyLicenses,

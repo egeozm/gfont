@@ -9,7 +9,7 @@ import {
   generateWebsiteReportPdf,
 } from "./generateWebsiteReportPdf.js";
 import { isLlmAdvisorEnabled, isLlmAdvisorEnabledFromEnv } from "./llmLicenseAdvisor.js";
-import type { ExportInstallContext, FontFormat, LlmAdvisorConfig, WebsiteReportInput } from "./types.js";
+import type { CrawlOptions, ExportInstallContext, FontFormat, LlmAdvisorConfig, WebsiteReportInput } from "./types.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(__dirname, "../web");
@@ -65,6 +65,44 @@ function parseLlmAdvisor(body: {
   };
 }
 
+function parseCrawlOptions(body: {
+  crawl?: boolean | CrawlOptions;
+  maxPages?: number;
+  maxDepth?: number;
+  concurrency?: number;
+}): CrawlOptions | undefined {
+  if (body.crawl === false) {
+    return { crawl: false, maxPages: 1 };
+  }
+
+  const nested =
+    body.crawl && typeof body.crawl === "object" ? body.crawl : ({} as CrawlOptions);
+
+  const crawl: CrawlOptions = {
+    crawl: nested.crawl ?? true,
+    maxPages:
+      typeof nested.maxPages === "number"
+        ? nested.maxPages
+        : typeof body.maxPages === "number"
+          ? body.maxPages
+          : undefined,
+    maxDepth:
+      typeof nested.maxDepth === "number"
+        ? nested.maxDepth
+        : typeof body.maxDepth === "number"
+          ? body.maxDepth
+          : undefined,
+    concurrency:
+      typeof nested.concurrency === "number"
+        ? nested.concurrency
+        : typeof body.concurrency === "number"
+          ? body.concurrency
+          : undefined,
+  };
+
+  return crawl;
+}
+
 export async function createServer() {
   const app = Fastify({ logger: false });
 
@@ -85,6 +123,10 @@ export async function createServer() {
       subsets?: string[];
       enableLlmAdvisor?: boolean;
       llmAdvisor?: LlmAdvisorConfig;
+      crawl?: boolean | CrawlOptions;
+      maxPages?: number;
+      maxDepth?: number;
+      concurrency?: number;
     };
 
     if (!body?.url || typeof body.url !== "string") {
@@ -99,6 +141,7 @@ export async function createServer() {
         subsets: parseSubsets(body.subsets),
         enableLlmAdvisor: llmOptions.enableLlmAdvisor,
         llmAdvisor: llmOptions.llmAdvisor,
+        crawl: parseCrawlOptions(body),
       });
 
       return {
@@ -204,6 +247,7 @@ export async function createServer() {
         recommendedSubsets: Array.isArray(body.recommendedSubsets)
           ? body.recommendedSubsets.filter((s): s is string => typeof s === "string")
           : undefined,
+        crawlMeta: body.crawlMeta,
         variants: body.variants as never,
         selectedVariantIds: Array.isArray(body.selectedVariantIds)
           ? body.selectedVariantIds.filter((id): id is string => typeof id === "string")

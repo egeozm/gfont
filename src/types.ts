@@ -55,9 +55,36 @@ export interface LocalizeResult {
   variantCount: number;
 }
 
+export interface LabelReference {
+  forLabel: string;
+  title: string;
+  href?: string;
+  detail?: string;
+}
+
+export interface CrawlOptions {
+  crawl?: boolean;
+  maxPages?: number;
+  maxDepth?: number;
+  concurrency?: number;
+}
+
+export interface CrawlMeta {
+  enabled: boolean;
+  seedUrl: string;
+  pagesScanned: number;
+  pagesFailed: number;
+  maxPages: number;
+  maxDepth: number;
+  limitReached?: "maxPages" | "maxDepth";
+  scannedPageUrls: string[];
+  failedPageUrls?: { url: string; error: string }[];
+}
+
 export interface DiscoveredFontLink {
   url: string;
   sourcePageUrl: string;
+  sourcePageUrls: string[];
 }
 
 export interface WebsiteDiscoveryResult {
@@ -68,6 +95,7 @@ export interface WebsiteDiscoveryResult {
   scannedStylesheets: string[];
   ignoredDirectFontAssetCount: number;
   selfHostedFonts: SelfHostedFontAsset[];
+  crawlMeta?: CrawlMeta;
 }
 
 export interface LocalizeManyOptions {
@@ -78,6 +106,7 @@ export interface LocalizeManyOptions {
   subsets: string[] | null;
   prefix: string;
   fontDisplay: string | null;
+  crawl?: CrawlOptions;
 }
 
 export interface LocalizeSharedOptions {
@@ -120,6 +149,7 @@ export interface FontLicenseInfo {
   statusLabel: string;
   confidence: FontLicenseConfidence;
   evidence?: string[];
+  references?: LabelReference[];
   detectionMethod?: string;
   aiAssisted?: boolean;
   llmConsulted?: boolean;
@@ -161,6 +191,7 @@ export interface AnalyzeInputOptions {
   subsets: string[] | null;
   enableLlmAdvisor?: boolean;
   llmAdvisor?: LlmAdvisorConfig;
+  crawl?: CrawlOptions;
 }
 
 export interface LlmResearchMeta {
@@ -177,10 +208,12 @@ export interface AnalyzeResult {
   inputUrl: string;
   inputType: "googleFontsCss" | "website";
   discoveredFontCssUrls: string[];
+  discoveredFontLinks?: DiscoveredFontLink[];
   ignoredDirectFontAssetCount: number;
   scannedStylesheets?: string[];
   pageLang?: string | null;
   recommendedSubsets?: string[];
+  crawlMeta?: CrawlMeta;
   variants: SelectableFontVariant[];
   families: string[];
   familyLicenses: FontLicenseInfo[];
@@ -215,6 +248,7 @@ export interface WebsiteReportInput {
   scannedStylesheets?: string[];
   pageLang?: string | null;
   recommendedSubsets?: string[];
+  crawlMeta?: CrawlMeta;
   variants: SelectableFontVariant[];
   selectedVariantIds?: string[];
   familyLicenses: FontLicenseInfo[];

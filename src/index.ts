@@ -6,7 +6,7 @@ import { discoverGoogleFontsFromWebsite, formatDiscoveryMessage } from "./discov
 import { formatSuccessMessage, localizeGoogleFonts } from "./localize.js";
 import { formatLocalizeManyMessage, localizeFromWebsite } from "./localizeMany.js";
 import { isGoogleFontsCssApiUrl, isGoogleFontsWebsiteUrl } from "./urlUtils.js";
-import type { FontFormat } from "./types.js";
+import type { CrawlOptions, FontFormat } from "./types.js";
 
 const VALID_FORMATS = new Set<FontFormat>(["woff2", "woff", "ttf"]);
 
@@ -50,6 +50,24 @@ function isWebsiteInput(url: string): boolean {
   }
 }
 
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function buildCrawlOptions(options: {
+  crawl?: boolean;
+  maxPages?: string;
+  maxDepth?: string;
+}): CrawlOptions {
+  return {
+    crawl: options.crawl !== false,
+    maxPages: parsePositiveInt(options.maxPages, 50),
+    maxDepth: parsePositiveInt(options.maxDepth, 10),
+  };
+}
+
 const program = new Command();
 
 program
@@ -63,6 +81,9 @@ program
   .option("--prefix <str>", "URL prefix for generated src paths", "./")
   .option("--font-display <val>", "Override font-display in generated CSS")
   .option("--discovery <mode>", "Website discovery mode: static", "static")
+  .option("--no-crawl", "Scan only the given page (disable same-origin site crawl)")
+  .option("--max-pages <n>", "Maximum same-origin pages to crawl", "50")
+  .option("--max-depth <n>", "Maximum link depth from seed page", "10")
   .option("--list-font-links", "Discover and print Google Fonts CSS links without downloading")
   .option("--from-website", "Force website discovery even if the URL looks like a Google Fonts host")
   .action(async (url: string, options) => {
@@ -79,13 +100,14 @@ program
         prefix: options.prefix ?? "./",
         fontDisplay: options.fontDisplay ?? null,
       };
+      const crawlOptions = buildCrawlOptions(options);
 
       const shouldDiscoverWebsite =
         options.fromWebsite || (isWebsiteInput(url) && !isDirectGoogleFontsCssInput(url));
 
       if (shouldDiscoverWebsite) {
         if (options.listFontLinks) {
-          const discovery = await discoverGoogleFontsFromWebsite(url);
+          const discovery = await discoverGoogleFontsFromWebsite(url, crawlOptions);
           console.log(formatDiscoveryMessage(discovery));
           if (discovery.fontLinks.length === 0) {
             process.exitCode = 1;
@@ -96,6 +118,7 @@ program
         const result = await localizeFromWebsite({
           websiteUrl: url,
           ...localizeOptions,
+          crawl: crawlOptions,
         });
 
         console.log(formatLocalizeManyMessage(result));

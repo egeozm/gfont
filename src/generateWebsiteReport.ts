@@ -81,13 +81,42 @@ export function generateWebsiteReport(input: WebsiteReportInput): string {
     "=== Overview ===",
     "",
     `Scanned URL: ${input.inputUrl}`,
-    `Scan type: ${input.inputType === "website" ? "Website page" : "Direct Google Fonts CSS URL"}`,
+    `Scan type: ${input.inputType === "website" ? "Website (same-origin crawl when enabled)" : "Direct Google Fonts CSS URL"}`,
     `Report generated: ${new Date().toISOString()}`,
     "",
     "=== Discovery ===",
     "",
     `Google Fonts CSS links found: ${input.discoveredFontCssUrls.length}`,
   ];
+
+  if (input.crawlMeta?.enabled) {
+    lines.push(
+      "",
+      "=== Site crawl ===",
+      "",
+      `Seed URL: ${input.crawlMeta.seedUrl}`,
+      `Pages scanned: ${input.crawlMeta.pagesScanned}`,
+      `Pages failed: ${input.crawlMeta.pagesFailed}`,
+      `Limits: max ${input.crawlMeta.maxPages} pages, depth ${input.crawlMeta.maxDepth}`
+    );
+    if (input.crawlMeta.limitReached) {
+      lines.push(`Limit reached: ${input.crawlMeta.limitReached}`);
+    }
+    if (input.crawlMeta.scannedPageUrls.length > 0) {
+      lines.push("", "Scanned pages:");
+      for (const pageUrl of input.crawlMeta.scannedPageUrls) {
+        lines.push(`  - ${pageUrl}`);
+      }
+    }
+    if (input.crawlMeta.failedPageUrls?.length) {
+      lines.push("", "Failed pages:");
+      for (const failure of input.crawlMeta.failedPageUrls) {
+        lines.push(`  - ${failure.url}: ${failure.error}`);
+      }
+    }
+  } else if (input.inputType === "website") {
+    lines.push("", "Site crawl: disabled (single page only)");
+  }
 
   if (input.discoveredFontCssUrls.length > 0) {
     lines.push("");
@@ -107,10 +136,12 @@ export function generateWebsiteReport(input: WebsiteReportInput): string {
   if (input.inputType === "website") {
     lines.push("");
     if (input.pageLang) {
-      lines.push(`Page language: ${input.pageLang}`);
+      lines.push(`Page language: ${input.pageLang} (from seed page HTML lang/meta)`);
     }
     if (input.recommendedSubsets?.length) {
-      lines.push(`Recommended subsets: ${input.recommendedSubsets.join(", ")}`);
+      lines.push(
+        `Recommended subsets: ${input.recommendedSubsets.join(", ")} (from locale mapping in gfont)`
+      );
     }
     if (input.scannedStylesheets?.length) {
       lines.push("", "Stylesheets scanned:", "");

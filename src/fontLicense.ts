@@ -1,15 +1,20 @@
 import { matchCommercialHost } from "./commercialHosts.js";
 import { matchFoundryFromMetadata } from "./foundryRegistry.js";
+import {
+  buildGoogleFontsSpecimenUrl,
+  GOOGLE_FONTS_METADATA_URL,
+  lookupGoogleFontsLicense,
+} from "./googleFontsMetadata.js";
 import { adviseFontLicense } from "./llmLicenseAdvisor.js";
 import { matchKnownOpenFontName } from "./openFontRegistry.js";
 import { matchKnownPaidFontName } from "./paidFontRegistry.js";
-import { lookupGoogleFontsLicense } from "./googleFontsMetadata.js";
 import { inspectEmbeddedFontLicense } from "./parseFontLicense.js";
 import { isGoogleFontsCssApiUrl } from "./urlUtils.js";
 import type {
   FontLicenseConfidence,
   FontLicenseInfo,
   FontLicenseStatus,
+  LabelReference,
   LicenseResolutionOptions,
   SelectableFontVariant,
 } from "./types.js";
@@ -47,6 +52,44 @@ function isGoogleFontsVariant(variant: SelectableFontVariant): boolean {
   );
 }
 
+function buildGoogleFontsReferences(
+  family: string,
+  sourceCssUrl: string,
+  specificLicense: string | null
+): LabelReference[] {
+  const references: LabelReference[] = [
+    {
+      forLabel: "status",
+      title: "Discovered stylesheet",
+      href: sourceCssUrl,
+    },
+    {
+      forLabel: "status",
+      title: "Google Fonts metadata",
+      href: GOOGLE_FONTS_METADATA_URL,
+      detail: specificLicense ? `license: ${specificLicense}` : "open-source catalog",
+    },
+    {
+      forLabel: "status",
+      title: "Google Fonts specimen",
+      href: buildGoogleFontsSpecimenUrl(family),
+    },
+    {
+      forLabel: "confidence",
+      title: "Detection source",
+      detail: "google_fonts — matched Google Fonts catalog",
+    },
+    {
+      forLabel: "commercialUse",
+      title: "License basis",
+      href: GOOGLE_FONTS_METADATA_URL,
+      detail: specificLicense ?? GOOGLE_FONTS_FALLBACK_LICENSE,
+    },
+  ];
+
+  return references;
+}
+
 function buildLicenseInfo(input: {
   family: string;
   source: string;
@@ -55,6 +98,7 @@ function buildLicenseInfo(input: {
   confidence: FontLicenseConfidence;
   detectionMethod: string;
   evidence: string[];
+  references?: LabelReference[];
   notes?: string;
   aiAssisted?: boolean;
   llmConsulted?: boolean;
@@ -70,6 +114,7 @@ function buildLicenseInfo(input: {
     confidence: input.confidence,
     detectionMethod: input.detectionMethod,
     evidence: input.evidence,
+    references: input.references,
     aiAssisted: input.aiAssisted ?? false,
     llmConsulted: input.llmConsulted ?? false,
     notes: input.notes,
@@ -110,6 +155,7 @@ async function resolveGoogleFontsFamilyLicense(
         ? `Google Fonts metadata reports license: ${specificLicense}`
         : "Google Fonts only distributes open-source licensed fonts.",
     ],
+    references: buildGoogleFontsReferences(family, sourceCssUrl, specificLicense),
     notes: "Google Fonts fonts are distributed under open-source licenses.",
     llmConsulted: false,
   });
@@ -121,11 +167,30 @@ async function resolveSelfHostedFontLicense(
   options: LicenseResolutionOptions = {}
 ): Promise<FontLicenseInfo> {
   const evidence: string[] = [`Self-hosted font source: ${sourceUrl}`];
+  const references: LabelReference[] = [
+    {
+      forLabel: "status",
+      title: "Font source URL",
+      href: sourceUrl,
+    },
+  ];
   let foundryHints: string[] = [];
 
   const paidFontMatch = matchKnownPaidFontName(family);
   if (paidFontMatch) {
     evidence.push(paidFontMatch.evidence);
+    references.push(
+      {
+        forLabel: "status",
+        title: "Paid font registry",
+        detail: paidFontMatch.evidence,
+      },
+      {
+        forLabel: "confidence",
+        title: "Detection source",
+        detail: "paid_font_registry — name match",
+      }
+    );
     return buildLicenseInfo({
       family,
       source: sourceUrl,
@@ -135,6 +200,7 @@ async function resolveSelfHostedFontLicense(
       confidence: "high",
       detectionMethod: "paid_font_registry",
       evidence,
+      references,
       llmConsulted: false,
       notes: "Listed in the known paid/commercial font registry. AI research was not needed.",
     });
@@ -144,6 +210,19 @@ async function resolveSelfHostedFontLicense(
   if (commercialHost) {
     evidence.push(commercialHost.evidence);
     foundryHints.push(commercialHost.provider);
+    references.push(
+      {
+        forLabel: "status",
+        title: "Commercial host match",
+        href: sourceUrl,
+        detail: commercialHost.evidence,
+      },
+      {
+        forLabel: "confidence",
+        title: "Detection source",
+        detail: "commercial_host — URL/host pattern match",
+      }
+    );
     return buildLicenseInfo({
       family,
       source: sourceUrl,
@@ -152,6 +231,7 @@ async function resolveSelfHostedFontLicense(
       confidence: "high",
       detectionMethod: "commercial_host",
       evidence,
+      references,
       llmConsulted: false,
       notes: "Classified automatically from filename/host. AI research was not needed.",
     });
@@ -163,12 +243,30 @@ async function resolveSelfHostedFontLicense(
     if (embedded.metadata) {
       if (embedded.metadata.vendorId) {
         evidence.push(`Embedded OS/2 vendor ID: ${embedded.metadata.vendorId}`);
+        references.push({
+          forLabel: "status",
+          title: "Embedded vendor ID",
+          href: sourceUrl,
+          detail: embedded.metadata.vendorId,
+        });
       }
       if (embedded.metadata.copyright) {
         evidence.push(`Embedded copyright: ${embedded.metadata.copyright}`);
+        references.push({
+          forLabel: "status",
+          title: "Embedded copyright",
+          href: sourceUrl,
+          detail: embedded.metadata.copyright,
+        });
       }
       if (embedded.metadata.manufacturer) {
         evidence.push(`Embedded manufacturer: ${embedded.metadata.manufacturer}`);
+        references.push({
+          forLabel: "status",
+          title: "Embedded manufacturer",
+          href: sourceUrl,
+          detail: embedded.metadata.manufacturer,
+        });
       }
 
       const foundryMatch = matchFoundryFromMetadata({
@@ -181,7 +279,18 @@ async function resolveSelfHostedFontLicense(
       if (foundryMatch) {
         evidence.push(foundryMatch.evidence);
         foundryHints.push(foundryMatch.foundry);
+        references.push({
+          forLabel: "status",
+          title: "Foundry metadata",
+          href: sourceUrl,
+          detail: foundryMatch.evidence,
+        });
         if (foundryMatch.status === "restricted") {
+          references.push({
+            forLabel: "confidence",
+            title: "Detection source",
+            detail: "foundry_metadata — commercial foundry match",
+          });
           return buildLicenseInfo({
             family,
             source: sourceUrl,
@@ -190,6 +299,7 @@ async function resolveSelfHostedFontLicense(
             confidence: "high",
             detectionMethod: "foundry_metadata",
             evidence,
+            references,
             llmConsulted: false,
             notes: "Classified automatically from foundry metadata. AI research was not needed.",
           });
@@ -198,6 +308,11 @@ async function resolveSelfHostedFontLicense(
     }
 
     if (embedded.status === "free") {
+      references.push({
+        forLabel: "confidence",
+        title: "Detection source",
+        detail: "embedded_metadata — open-source license marker in font file",
+      });
       return buildLicenseInfo({
         family,
         source: sourceUrl,
@@ -206,12 +321,18 @@ async function resolveSelfHostedFontLicense(
         confidence: "high",
         detectionMethod: "embedded_metadata",
         evidence: [...evidence, "Embedded font metadata contains an open-source license marker."],
+        references,
         llmConsulted: false,
         notes: "License detected from embedded font metadata. AI research was not needed.",
       });
     }
 
     if (embedded.status === "restricted") {
+      references.push({
+        forLabel: "confidence",
+        title: "Detection source",
+        detail: "embedded_metadata — restricted license marker in font file",
+      });
       return buildLicenseInfo({
         family,
         source: sourceUrl,
@@ -220,16 +341,35 @@ async function resolveSelfHostedFontLicense(
         confidence: "high",
         detectionMethod: "embedded_metadata",
         evidence: [...evidence, "Embedded font metadata suggests a restricted license."],
+        references,
         llmConsulted: false,
         notes: "Classified automatically from embedded font metadata. AI research was not needed.",
       });
     }
   } else {
     evidence.push("Could not download font binary for embedded metadata inspection.");
+    references.push({
+      forLabel: "status",
+      title: "Font fetch",
+      detail: "Could not download font binary for embedded metadata inspection.",
+    });
   }
 
   const openFontMatch = await matchKnownOpenFontName(family);
   if (openFontMatch) {
+    references.push(
+      {
+        forLabel: "status",
+        title: "Open font registry",
+        href: GOOGLE_FONTS_METADATA_URL,
+        detail: openFontMatch.evidence,
+      },
+      {
+        forLabel: "confidence",
+        title: "Detection source",
+        detail: "open_font_registry — name match (medium confidence)",
+      }
+    );
     return buildLicenseInfo({
       family,
       source: sourceUrl,
@@ -238,6 +378,7 @@ async function resolveSelfHostedFontLicense(
       confidence: "medium",
       detectionMethod: "open_font_registry",
       evidence: [...evidence, openFontMatch.evidence],
+      references,
       llmConsulted: false,
       notes: "Matched by family name against known open-source font registry. AI research was not needed.",
     });
@@ -255,6 +396,25 @@ async function resolveSelfHostedFontLicense(
     );
 
     if (advisor.decision === "restricted") {
+      const llmReferences: LabelReference[] = [
+        ...references,
+        {
+          forLabel: "status",
+          title: "LLM advisor",
+          href: advisor.apiHost,
+          detail: advisor.rationale,
+        },
+        {
+          forLabel: "confidence",
+          title: "Detection source",
+          detail: "llm_advisor — AI flagged as restricted (low confidence)",
+        },
+        ...advisor.links.map((link, index) => ({
+          forLabel: "status",
+          title: `LLM reference ${index + 1}`,
+          href: link,
+        })),
+      ];
       return buildLicenseInfo({
         family,
         source: sourceUrl,
@@ -268,6 +428,7 @@ async function resolveSelfHostedFontLicense(
           advisor.rationale,
           ...advisor.links.map((link) => `Reference: ${link}`),
         ].filter(Boolean),
+        references: llmReferences,
         aiAssisted: true,
         llmConsulted: true,
         notes: "AI-assisted research flagged this font as potentially restricted. This is not legal advice.",
@@ -279,6 +440,12 @@ async function resolveSelfHostedFontLicense(
         evidence.push(`LLM API host: ${advisor.apiHost}`);
       }
       evidence.push(`LLM advisor: ${advisor.rationale}`);
+      references.push({
+        forLabel: "status",
+        title: "LLM advisor",
+        href: advisor.apiHost,
+        detail: advisor.rationale,
+      });
       return buildLicenseInfo({
         family,
         source: sourceUrl,
@@ -287,6 +454,7 @@ async function resolveSelfHostedFontLicense(
         confidence: "low",
         detectionMethod: "fallback",
         evidence,
+        references,
         aiAssisted: true,
         llmConsulted: true,
         notes: "AI research was consulted but could not confirm a safe license. Verify manually.",
@@ -296,9 +464,25 @@ async function resolveSelfHostedFontLicense(
     evidence.push(`LLM advisor: ${advisor.rationale}`);
   } else if (options.llmAdvisorRequested) {
     evidence.push("AI research was enabled but API URL or key is missing.");
+    references.push({
+      forLabel: "status",
+      title: "AI research",
+      detail: "Enabled but missing API URL or key.",
+    });
   } else {
     evidence.push("AI research was not enabled for this analysis.");
   }
+
+  references.push({
+    forLabel: "status",
+    title: "No authoritative source",
+    detail: "Could not verify license automatically from registry, host, or embedded metadata.",
+  });
+  references.push({
+    forLabel: "confidence",
+    title: "Detection source",
+    detail: "fallback — no confirming source found",
+  });
 
   return buildLicenseInfo({
     family,
@@ -308,6 +492,7 @@ async function resolveSelfHostedFontLicense(
     confidence: "low",
     detectionMethod: "fallback",
     evidence,
+    references,
     llmConsulted: false,
     notes: "Could not verify license automatically. Confirm you have the right to self-host this font.",
   });
@@ -371,6 +556,20 @@ export function hasUnverifiedLicenses(licenses: FontLicenseInfo[]): boolean {
   return licenses.some((license) => license.status === "unknown" || license.status === "restricted");
 }
 
+export function formatLicenseReferences(license: FontLicenseInfo): string[] {
+  if (!license.references?.length) {
+    return [];
+  }
+
+  return license.references.map((ref) => {
+    const detail = ref.detail ? ` — ${ref.detail}` : "";
+    if (ref.href) {
+      return `  - ${ref.title}: ${ref.href}${detail}`;
+    }
+    return `  - ${ref.title}${detail}`;
+  });
+}
+
 export function generateLicenseSummaryText(licenses: FontLicenseInfo[]): string {
   const lines = [
     "Google Fonts Localizer — License Summary",
@@ -396,6 +595,12 @@ export function generateLicenseSummaryText(licenses: FontLicenseInfo[]): string 
     }
 
     lines.push(`AI research consulted: ${license.llmConsulted ? "Yes" : "No"}`);
+
+    const referenceLines = formatLicenseReferences(license);
+    if (referenceLines.length > 0) {
+      lines.push("References:");
+      lines.push(...referenceLines);
+    }
 
     if (license.evidence?.length) {
       lines.push("Evidence:");

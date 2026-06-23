@@ -432,6 +432,64 @@ input[type="text"] {
   font-size: 0.82rem;
 }
 
+.label-references {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.label-references a {
+  color: var(--accent);
+  word-break: break-all;
+}
+
+.reference-group {
+  margin-top: 0.55rem;
+}
+
+.reference-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.reference-detail {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--muted);
+}
+
+.reference-title {
+  font-weight: 600;
+}
+
+.discovery-source {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+}
+
+.crawl-details {
+  margin: 0.5rem 0;
+}
+
+.crawl-details summary,
+.page-ref-details summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.crawl-advanced {
+  margin-top: 0.25rem;
+}
+
 .family-header {
   display: flex;
   justify-content: space-between;

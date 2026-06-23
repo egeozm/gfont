@@ -1,9 +1,16 @@
+import { crawlSameOriginPages, shouldCrawl } from "./crawlWebsite.js";
 import { fetchTextWithTimeout } from "./fetchUtils.js";
 import {
   extractPageLangFromHtml,
   getRecommendedSubsetsForLang,
 } from "./localeSubsets.js";
-import type { DiscoveredFontLink, SelfHostedFontAsset, WebsiteDiscoveryResult } from "./types.js";
+import type {
+  CrawlMeta,
+  CrawlOptions,
+  DiscoveredFontLink,
+  SelfHostedFontAsset,
+  WebsiteDiscoveryResult,
+} from "./types.js";
 import {
   dedupeGoogleFontsCssUrls,
   isDirectFontBinaryUrl,
@@ -28,6 +35,15 @@ export class WebsiteFetchError extends Error {
     super(message);
     this.name = "WebsiteFetchError";
   }
+}
+
+export interface SinglePageDiscoveryResult {
+  pageUrl: string;
+  pageLang: string | null;
+  fontCssUrls: string[];
+  scannedStylesheets: string[];
+  ignoredDirectFontAssetCount: number;
+  selfHostedFonts: SelfHostedFontAsset[];
 }
 
 function extractAllLinkHrefs(html: string): string[] {
@@ -196,11 +212,19 @@ async function fetchText(url: string): Promise<string> {
   return fetchTextWithTimeout(url);
 }
 
-function toDiscoveredLinks(urls: string[], sourcePageUrl: string): DiscoveredFontLink[] {
-  return urls.map((url) => ({
-    url,
-    sourcePageUrl,
-  }));
+function buildDiscoveredFontLinks(
+  urlToPages: Map<string, Set<string>>
+): DiscoveredFontLink[] {
+  return [...urlToPages.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([url, pages]) => {
+      const sourcePageUrls = [...pages].sort();
+      return {
+        url,
+        sourcePageUrl: sourcePageUrls[0] ?? url,
+        sourcePageUrls,
+      };
+    });
 }
 
 export function scanHtmlForGoogleFonts(html: string, pageUrl: string): {
@@ -282,7 +306,10 @@ export function scanCssForSelfHostedFonts(css: string, cssUrl: string): SelfHost
   ]);
 }
 
-export async function discoverGoogleFontsFromWebsite(pageUrl: string): Promise<WebsiteDiscoveryResult> {
+export async function discoverFontsFromSinglePage(
+  pageUrl: string,
+  html?: string
+): Promise<SinglePageDiscoveryResult> {
   let parsedPageUrl: URL;
 
   try {
@@ -295,10 +322,9 @@ export async function discoverGoogleFontsFromWebsite(pageUrl: string): Promise<W
     throw new Error("Website URL must use http or https.");
   }
 
-  const html = await fetchText(parsedPageUrl.toString());
-  const pageLang = extractPageLangFromHtml(html);
-  const recommendedSubsets = getRecommendedSubsetsForLang(pageLang);
-  const initialScan = scanHtmlForGoogleFonts(html, parsedPageUrl.toString());
+  const pageHtml = html ?? (await fetchText(parsedPageUrl.toString()));
+  const pageLang = extractPageLangFromHtml(pageHtml);
+  const initialScan = scanHtmlForGoogleFonts(pageHtml, parsedPageUrl.toString());
   const candidates = [...initialScan.fontCssUrls];
   const fetchedStylesheets: string[] = [];
   const selfHostedFonts = [...initialScan.selfHostedFonts];
@@ -314,20 +340,140 @@ export async function discoverGoogleFontsFromWebsite(pageUrl: string): Promise<W
     }
   }
 
-  const normalized = dedupeGoogleFontsCssUrls(candidates);
-
   return {
     pageUrl: parsedPageUrl.toString(),
     pageLang,
-    recommendedSubsets,
-    fontLinks: toDiscoveredLinks(normalized, parsedPageUrl.toString()),
+    fontCssUrls: dedupeGoogleFontsCssUrls(candidates),
     scannedStylesheets: fetchedStylesheets,
     ignoredDirectFontAssetCount: initialScan.ignoredDirectFontAssetCount,
     selfHostedFonts: dedupeSelfHostedFonts(selfHostedFonts),
   };
 }
 
+function mergeSinglePageResults(
+  pages: SinglePageDiscoveryResult[],
+  seedUrl: string,
+  crawlMeta?: CrawlMeta
+): WebsiteDiscoveryResult {
+  const seedPage = pages.find((page) => page.pageUrl === seedUrl) ?? pages[0];
+  const urlToPages = new Map<string, Set<string>>();
+  const scannedStylesheets = new Set<string>();
+  let ignoredDirectFontAssetCount = 0;
+  const selfHostedFonts: SelfHostedFontAsset[] = [];
+
+  for (const page of pages) {
+    ignoredDirectFontAssetCount += page.ignoredDirectFontAssetCount;
+    for (const sheet of page.scannedStylesheets) {
+      scannedStylesheets.add(sheet);
+    }
+    selfHostedFonts.push(...page.selfHostedFonts);
+
+    for (const cssUrl of page.fontCssUrls) {
+      const normalized = normalizeGoogleFontsCssUrl(cssUrl) ?? cssUrl;
+      const existing = urlToPages.get(normalized) ?? new Set<string>();
+      existing.add(page.pageUrl);
+      urlToPages.set(normalized, existing);
+    }
+  }
+
+  return {
+    pageUrl: seedUrl,
+    pageLang: seedPage?.pageLang ?? null,
+    recommendedSubsets: getRecommendedSubsetsForLang(seedPage?.pageLang ?? null),
+    fontLinks: buildDiscoveredFontLinks(urlToPages),
+    scannedStylesheets: [...scannedStylesheets].sort(),
+    ignoredDirectFontAssetCount,
+    selfHostedFonts: dedupeSelfHostedFonts(selfHostedFonts),
+    crawlMeta,
+  };
+}
+
+export async function discoverGoogleFontsFromWebsite(
+  pageUrl: string,
+  options?: CrawlOptions
+): Promise<WebsiteDiscoveryResult> {
+  if (!shouldCrawl(options)) {
+    const single = await discoverFontsFromSinglePage(pageUrl);
+    return mergeSinglePageResults([single], single.pageUrl, {
+      enabled: false,
+      seedUrl: single.pageUrl,
+      pagesScanned: 1,
+      pagesFailed: 0,
+      maxPages: 1,
+      maxDepth: 0,
+      scannedPageUrls: [single.pageUrl],
+    });
+  }
+
+  const crawl = await crawlSameOriginPages(pageUrl, options);
+  const perPage: SinglePageDiscoveryResult[] = [];
+
+  for (const page of crawl.pages) {
+    perPage.push(await discoverFontsFromSinglePage(page.url, page.html));
+  }
+
+  return mergeSinglePageResults(perPage, crawl.seedUrl, crawl.crawlMeta);
+}
+
 export function formatDiscoveryMessage(result: WebsiteDiscoveryResult): string {
+  const crawlMeta = result.crawlMeta;
+
+  if (crawlMeta?.enabled) {
+    const crawlLines = [
+      `Crawled ${crawlMeta.pagesScanned} same-origin page(s) starting from ${crawlMeta.seedUrl}.`,
+    ];
+
+    if (crawlMeta.pagesFailed > 0) {
+      crawlLines.push(`Failed to fetch ${crawlMeta.pagesFailed} page(s).`);
+    }
+
+    if (crawlMeta.limitReached === "maxPages") {
+      crawlLines.push(`Stopped at max pages limit (${crawlMeta.maxPages}).`);
+    } else if (crawlMeta.limitReached === "maxDepth") {
+      crawlLines.push(`Some links were skipped at max depth (${crawlMeta.maxDepth}).`);
+    }
+
+    if (result.fontLinks.length === 0) {
+      return [
+        ...crawlLines,
+        "",
+        "No Google Fonts CSS links found across crawled pages.",
+        "The site may use local fonts, system fonts, or JavaScript-injected fonts.",
+        "Try a future rendered mode if fonts load only after JavaScript runs.",
+        result.ignoredDirectFontAssetCount > 0
+          ? `Ignored ${result.ignoredDirectFontAssetCount} direct font binary URL(s) from gstatic or similar sources.`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+    }
+
+    const lines = [
+      ...crawlLines,
+      "",
+      `Discovered ${result.fontLinks.length} unique Google Fonts stylesheet(s) across crawled pages:`,
+      ...result.fontLinks.map((link) => {
+        const pages =
+          link.sourcePageUrls.length > 1
+            ? ` (found on ${link.sourcePageUrls.length} pages)`
+            : ` (found on ${link.sourcePageUrl})`;
+        return `- ${link.url}${pages}`;
+      }),
+    ];
+
+    if (result.scannedStylesheets.length > 0) {
+      lines.push("", `Scanned ${result.scannedStylesheets.length} linked stylesheet(s).`);
+    }
+
+    if (result.ignoredDirectFontAssetCount > 0) {
+      lines.push(
+        `Ignored ${result.ignoredDirectFontAssetCount} direct font binary URL(s) (maps/widgets/preloads).`
+      );
+    }
+
+    return lines.join("\n");
+  }
+
   if (result.fontLinks.length === 0) {
     return [
       `No Google Fonts CSS links found on ${result.pageUrl}.`,

@@ -196,6 +196,23 @@ function drawLicenseCard(doc: PdfDoc, license: FontLicenseInfo): void {
     doc.y += 6;
   }
 
+  if (license.references?.length) {
+    ensureSpace(doc, 40);
+    doc.fillColor(COLORS.text).font("Helvetica-Bold").fontSize(11).text("References", PAGE_MARGIN, doc.y);
+    doc.y += 14;
+
+    for (const ref of license.references) {
+      ensureSpace(doc, 30);
+      const refLine = ref.href
+        ? `• ${ref.title}: ${ref.href}${ref.detail ? ` — ${ref.detail}` : ""}`
+        : `• ${ref.title}${ref.detail ? ` — ${ref.detail}` : ""}`;
+      doc.fillColor(COLORS.muted).font("Helvetica").fontSize(9).text(refLine, PAGE_MARGIN + 8, doc.y, {
+        width: CONTENT_WIDTH - 8,
+      });
+      doc.y += 4;
+    }
+  }
+
   if (license.evidence?.length) {
     ensureSpace(doc, 40);
     doc.fillColor(COLORS.text).font("Helvetica-Bold").fontSize(11).text("Why?", PAGE_MARGIN, doc.y);
@@ -279,7 +296,38 @@ export async function generateWebsiteReportPdf(input: WebsiteReportInput): Promi
     );
 
     if (input.inputType === "website" && input.pageLang) {
-      doc.y = drawField(doc, "Page language", input.pageLang, doc.y);
+      doc.y = drawField(doc, "Page language", `${input.pageLang} (seed page HTML)`, doc.y);
+    }
+
+    if (input.crawlMeta?.enabled) {
+      doc.moveDown(0.5);
+      doc.fillColor(COLORS.text).font("Helvetica-Bold").fontSize(11).text("Site crawl");
+      doc.moveDown(0.3);
+      doc.y = drawField(doc, "Seed URL", input.crawlMeta.seedUrl, doc.y);
+      doc.y = drawField(doc, "Pages scanned", String(input.crawlMeta.pagesScanned), doc.y);
+      doc.y = drawField(doc, "Pages failed", String(input.crawlMeta.pagesFailed), doc.y);
+      if (input.crawlMeta.limitReached) {
+        doc.y = drawField(doc, "Limit reached", input.crawlMeta.limitReached, doc.y);
+      }
+      if (input.crawlMeta.scannedPageUrls.length > 0) {
+        ensureSpace(doc, 24);
+        doc.fillColor(COLORS.text).font("Helvetica-Bold").fontSize(10).text("Scanned pages", PAGE_MARGIN, doc.y);
+        doc.moveDown(0.2);
+        for (const pageUrl of input.crawlMeta.scannedPageUrls.slice(0, 20)) {
+          ensureSpace(doc, 24);
+          doc.fillColor(COLORS.muted).font("Helvetica").fontSize(9).text(`• ${pageUrl}`, PAGE_MARGIN, doc.y, {
+            width: CONTENT_WIDTH,
+          });
+          doc.y += 2;
+        }
+        if (input.crawlMeta.scannedPageUrls.length > 20) {
+          doc.fillColor(COLORS.muted).font("Helvetica").fontSize(9).text(
+            `… and ${input.crawlMeta.scannedPageUrls.length - 20} more`,
+            PAGE_MARGIN,
+            doc.y
+          );
+        }
+      }
     }
 
     if (input.discoveredFontCssUrls.length > 0) {
