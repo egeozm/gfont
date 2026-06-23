@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.npm-cache/
+output/
+fonts/
+fonts-latin/
+fonts-v1-test/
+*.log
+.DS_Store

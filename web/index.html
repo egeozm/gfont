@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Google Fonts Localizer</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Local Web App</p>
+        <h1>Google Fonts Localizer</h1>
+        <p class="subtitle">
+          Paste a website URL or Google Fonts CSS link, choose the variants you want, and download a ready-to-use ZIP.
+        </p>
+      </div>
+    </header>
+
+    <main class="layout">
+      <section class="card">
+        <h2>Analyze</h2>
+        <form id="analyze-form" class="stack">
+          <label class="field">
+            <span>Website or Google Fonts URL</span>
+            <input id="input-url" type="url" placeholder="https://example.com or https://fonts.googleapis.com/css2?..." required>
+          </label>
+
+          <div class="grid-2">
+            <label class="field">
+              <span>Formats</span>
+              <div class="checkbox-row">
+                <label><input type="checkbox" name="format" value="woff2" checked> woff2</label>
+                <label><input type="checkbox" name="format" value="woff" checked> woff</label>
+                <label><input type="checkbox" name="format" value="ttf" checked> ttf</label>
+              </div>
+            </label>
+
+            <label class="field">
+              <span>Subset filter (optional)</span>
+              <input id="input-subsets" type="text" placeholder="latin, latin-ext">
+            </label>
+          </div>
+
+          <button type="submit" class="btn primary" id="analyze-btn">Analyze fonts</button>
+        </form>
+        <p id="status" class="status" aria-live="polite"></p>
+      </section>
+
+      <section class="card" id="llm-settings-card">
+        <details class="settings-details" id="llm-settings-details">
+          <summary>
+            <span class="settings-summary-title">License AI settings</span>
+            <span class="muted settings-summary-hint">Optional — stored in your browser only</span>
+          </summary>
+          <div id="llm-settings-form" class="stack settings-form">
+            <p class="muted settings-note">
+              Enable AI-assisted license research for fonts that remain unknown after automatic checks.
+              Settings are read from this form when you analyze — you do not need to click Save first, but Save keeps them for next time.
+              Your API key is stored in this browser's local storage and sent only to your local server during analysis.
+              It is never written to disk by the server.
+            </p>
+            <label class="field checkbox-field">
+              <input type="checkbox" id="llm-enabled">
+              <span>Enable AI license research</span>
+            </label>
+            <label class="field">
+              <span>API URL</span>
+              <input id="llm-api-url" type="url" placeholder="OpenAI or Google Gemini generateContent URL" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>API key</span>
+              <input id="llm-api-key" type="password" placeholder="gsk_... or Gemini key" autocomplete="off">
+            </label>
+            <label class="field">
+              <span>Model</span>
+              <input id="llm-model" type="text" placeholder="llama-3.3-70b-versatile or gemini-2.0-flash" autocomplete="off">
+            </label>
+            <div class="settings-actions">
+              <button type="button" class="btn ghost" id="llm-save-btn">Save settings</button>
+              <button type="button" class="btn ghost" id="llm-clear-btn">Clear saved key</button>
+            </div>
+            <p id="llm-settings-status" class="muted settings-status" aria-live="polite"></p>
+          </div>
+        </details>
+      </section>
+
+      <section class="card hidden" id="discovery-card">
+        <h2>Discovery</h2>
+        <div id="discovery-content"></div>
+      </section>
+
+      <section class="card hidden" id="selection-card">
+        <div class="section-header">
+          <div>
+            <h2>Select fonts</h2>
+            <p class="muted section-hint">Check the variants you want to preview and download.</p>
+          </div>
+          <div class="actions">
+            <button type="button" class="btn ghost" id="select-all-btn">Select all</button>
+            <button type="button" class="btn ghost hidden" id="select-recommended-btn">Recommended</button>
+            <button type="button" class="btn ghost" id="select-latin-btn">Latin only</button>
+            <button type="button" class="btn ghost hidden" id="toggle-subsets-btn">Show all subsets</button>
+            <button type="button" class="btn ghost" id="clear-btn">Clear</button>
+          </div>
+        </div>
+        <div id="families-container" class="families"></div>
+      </section>
+
+      <section class="card hidden" id="preview-card">
+        <div class="section-header">
+          <div>
+            <h2>Preview</h2>
+            <p class="muted section-hint">Shows every checked variant above. Change format to compare woff2, woff, or ttf.</p>
+          </div>
+          <div class="preview-controls" id="preview-controls">
+            <label class="field inline-field">
+              <span>Preview format</span>
+              <select id="preview-format" class="select-input">
+                <option value="woff2">woff2</option>
+                <option value="woff">woff</option>
+                <option value="ttf">ttf</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <p id="preview-count" class="preview-count muted"></p>
+        <div id="preview-container" class="preview"></div>
+      </section>
+
+      <section class="card hidden" id="export-card">
+        <h2>Install &amp; download</h2>
+        <div id="license-warning" class="license-warning hidden"></div>
+        <p id="export-summary" class="muted"></p>
+
+        <div id="install-instructions" class="install-instructions hidden">
+          <h3>Self-hosting steps</h3>
+          <ol id="install-steps" class="install-steps"></ol>
+          <div id="install-links-to-remove" class="install-links hidden">
+            <p class="muted">Remove these Google Fonts links from your site:</p>
+            <ul id="install-remove-list" class="discovery-list"></ul>
+          </div>
+          <pre id="install-snippet" class="install-snippet"><code>&lt;link rel="stylesheet" href="./fonts.css"&gt;</code></pre>
+        </div>
+
+        <div class="export-actions">
+          <button type="button" class="btn primary" id="export-btn">Download ZIP</button>
+          <button type="button" class="btn ghost" id="report-btn">Download PDF report</button>
+        </div>
+        <p class="muted install-note">ZIP includes fonts.css, test.html, INSTALL.md, LICENSE-SUMMARY.txt, WEBSITE-REPORT.pdf, and WEBSITE-REPORT.txt (when applicable).</p>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
