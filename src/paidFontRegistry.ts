@@ -3,21 +3,7 @@
  * Sourced from Mark Simonson Studio and similar commercial catalogs.
  */
 const KNOWN_PAID_FONTS: Array<{ name: string; foundry?: string }> = [
-  // Commercial catalog (image 1)
-  { name: "Elzevir", foundry: "Mark Simonson Studio" },
-  { name: "Energy Sans", foundry: "Mark Simonson Studio" },
-  { name: "Essence", foundry: "Mark Simonson Studio" },
-  { name: "Grange", foundry: "Mark Simonson Studio" },
-  { name: "Heh Script", foundry: "Mark Simonson Studio" },
-  { name: "Neo Grotesk", foundry: "Mark Simonson Studio" },
-  { name: "Painter Script", foundry: "Mark Simonson Studio" },
-  { name: "Prefab Script", foundry: "Mark Simonson Studio" },
-  { name: "Proxima Nova Wide", foundry: "Mark Davis / Font Bureau" },
-  { name: "Proxima Serif", foundry: "Mark Davis / Font Bureau" },
-  { name: "Proxima Slab", foundry: "Mark Davis / Font Bureau" },
-  { name: "Rational Script", foundry: "Mark Simonson Studio" },
-  { name: "Renault", foundry: "Custom / brand font" },
-  // Commercial catalog (image 2)
+  { name: "Acme Gothic", foundry: "Mark Simonson Studio" },
   { name: "Blakely", foundry: "Mark Simonson Studio" },
   { name: "Bookmania", foundry: "Mark Simonson Studio" },
   { name: "Changeling Neo", foundry: "Mark Simonson Studio" },
@@ -33,7 +19,25 @@ const KNOWN_PAID_FONTS: Array<{ name: string; foundry?: string }> = [
   { name: "Lakeside", foundry: "Mark Simonson Studio" },
   { name: "Metallophile Sp8", foundry: "Mark Simonson Studio" },
   { name: "Mostra Nuova", foundry: "Mark Simonson Studio" },
-  // Unpublished / in-progress catalog (image 3)
+  { name: "Parkside", foundry: "Mark Simonson Studio" },
+  { name: "Elzevir", foundry: "Mark Simonson Studio" },
+  { name: "Energy Sans", foundry: "Mark Simonson Studio" },
+  { name: "Essence", foundry: "Mark Simonson Studio" },
+  { name: "Grange", foundry: "Mark Simonson Studio" },
+  { name: "Heh Script", foundry: "Mark Simonson Studio" },
+  { name: "Neo Grotesk", foundry: "Mark Simonson Studio" },
+  { name: "Painter Script", foundry: "Mark Simonson Studio" },
+  { name: "Prefab Script", foundry: "Mark Simonson Studio" },
+  { name: "Proxima Nova Wide", foundry: "Mark Davis / Font Bureau" },
+  { name: "Proxima Serif", foundry: "Mark Davis / Font Bureau" },
+  { name: "Proxima Slab", foundry: "Mark Davis / Font Bureau" },
+  { name: "Rational Script", foundry: "Mark Simonson Studio" },
+  { name: "Renault", foundry: "Custom / brand font" },
+  { name: "Ristagne", foundry: "Mark Simonson Studio" },
+  { name: "Savoire", foundry: "Mark Simonson Studio" },
+  { name: "Skin & Bones", foundry: "Mark Simonson Studio" },
+  { name: "Skool Caps", foundry: "Mark Simonson Studio" },
+  { name: "Skye", foundry: "Mark Simonson Studio" },
   { name: "Gazebo", foundry: "Mark Simonson Studio" },
   { name: "Aftermath", foundry: "Mark Simonson Studio" },
   { name: "American Script", foundry: "Mark Simonson Studio" },
@@ -43,6 +47,9 @@ const KNOWN_PAID_FONTS: Array<{ name: string; foundry?: string }> = [
   { name: "California Script", foundry: "Mark Simonson Studio" },
   { name: "Champhor", foundry: "Mark Simonson Studio" },
 ];
+
+/** Canonical watchlist column order for font-check CSV output. */
+export const WATCHLIST_FONTS: readonly string[] = KNOWN_PAID_FONTS.map((entry) => entry.name);
 
 function normalizeFamilyName(value: string): string {
   return value.trim().toLowerCase();
@@ -75,6 +82,10 @@ function lookupPaidFontEntry(family: string): (typeof KNOWN_PAID_FONTS)[number] 
   }
 
   return null;
+}
+
+export function matchWatchlistFont(family: string): string | null {
+  return lookupPaidFontEntry(family)?.name ?? null;
 }
 
 export function matchKnownPaidFontName(family: string): {

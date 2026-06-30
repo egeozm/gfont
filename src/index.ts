@@ -2,6 +2,12 @@
 
 import { Command } from "commander";
 import path from "node:path";
+import { runBatch } from "./batch.js";
+import {
+  FONT_CHECK_DEFAULT_MAX_DEPTH,
+  FONT_CHECK_DEFAULT_MAX_PAGES,
+  runFontCheckBatch,
+} from "./fontCheckBatch.js";
 import { discoverGoogleFontsFromWebsite, formatDiscoveryMessage } from "./discoverFonts.js";
 import { formatSuccessMessage, localizeGoogleFonts } from "./localize.js";
 import { formatLocalizeManyMessage, localizeFromWebsite } from "./localizeMany.js";
@@ -69,6 +75,68 @@ function buildCrawlOptions(options: {
 }
 
 const program = new Command();
+
+program
+  .command("font-check")
+  .description("Check watchlist fonts across sites and write a single CSV report")
+  .requiredOption("--sites <file>", "Path to txt file with one URL per line")
+  .requiredOption("--output <file>", "Output CSV file path")
+  .option(
+    "--check-max-pages <n>",
+    "Maximum same-origin pages to crawl per site",
+    String(FONT_CHECK_DEFAULT_MAX_PAGES)
+  )
+  .option(
+    "--check-max-depth <n>",
+    "Maximum link depth from seed page",
+    String(FONT_CHECK_DEFAULT_MAX_DEPTH)
+  )
+  .option("--no-crawl", "Scan only the seed page")
+  .action(async (options) => {
+    try {
+      const result = await runFontCheckBatch({
+        sitesFile: options.sites,
+        outFile: options.output,
+        crawl: {
+          crawl: options.crawl !== false,
+          maxPages: parsePositiveInt(options.checkMaxPages, FONT_CHECK_DEFAULT_MAX_PAGES),
+          maxDepth: parsePositiveInt(options.checkMaxDepth, FONT_CHECK_DEFAULT_MAX_DEPTH),
+        },
+      });
+
+      if (result.failed > 0) {
+        process.exitCode = 1;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Error: ${message}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("batch")
+  .description("Analyze multiple websites from a file and save PDF reports for each")
+  .option("-o, --out <dir>", "Base output directory; reports are saved to <dir>/reports/", "./output")
+  .option("--formats <list>", "Comma-separated formats: woff2,woff,ttf", "woff2,woff,ttf")
+  .option("--max-pages <n>", "Maximum same-origin pages to crawl per site", "50")
+  .action(async (options) => {
+    try {
+      const result = await runBatch({
+        outDir: path.resolve(options.out),
+        formats: parseFormats(options.formats),
+        maxPages: parsePositiveInt(options.maxPages, 50),
+      });
+
+      if (result.failed > 0) {
+        process.exitCode = 1;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Error: ${message}`);
+      process.exitCode = 1;
+    }
+  });
 
 program
   .name("gfont-localize")
