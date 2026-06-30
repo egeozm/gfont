@@ -48,6 +48,27 @@ export function isLlmAdvisorEnabledFromEnv(): boolean {
   return process.env.LICENSE_LLM_ENABLED === "true" || process.env.LICENSE_LLM_ENABLED === "1";
 }
 
+export function getHardcodedLlmAdvisor(): LlmAdvisorConfig | undefined {
+  if (!isLlmAdvisorEnabledFromEnv()) {
+    return undefined;
+  }
+
+  const apiUrl = process.env.LICENSE_LLM_API_URL?.trim();
+  const apiKey = process.env.LICENSE_LLM_API_KEY?.trim();
+  const model = process.env.LICENSE_LLM_MODEL?.trim();
+
+  if (!apiUrl || !apiKey) {
+    return undefined;
+  }
+
+  return {
+    enabled: true,
+    apiUrl,
+    apiKey,
+    ...(model ? { model } : {}),
+  };
+}
+
 export function resolveLlmAdvisorConfig(override?: LlmAdvisorConfig): ResolvedLlmConfig | null {
   const enabled = override?.enabled ?? isLlmAdvisorEnabledFromEnv();
   if (!enabled) return null;
